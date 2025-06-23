@@ -23,7 +23,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _playCoinBurstAnimation(Offset start, int count) {
     final overlay = Overlay.of(context);
     final renderBox = _coinTargetKey.currentContext?.findRenderObject() as RenderBox?;
-    if (overlay == null || renderBox == null) return;
+    if (renderBox == null) return;
 
     final size = renderBox.size;
     final end = renderBox.localToGlobal(Offset(size.width / 2, size.height / 2));
@@ -39,9 +39,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
     });
 
-    for (var e in entries) overlay.insert(e);
+    for (var e in entries) {
+      overlay.insert(e);
+    }
     Future.delayed(Duration(milliseconds: 800 + count * 50), () {
-      for (var e in entries) e.remove();
+      for (var e in entries) {
+        e.remove();
+      }
     });
   }
 
