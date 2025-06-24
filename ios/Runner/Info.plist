@@ -8,6 +8,10 @@
 	<string>This app needs location to verify walking/biking tasks.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs photo access to verify tasks.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Needed to count your steps for walk task.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Needed to track your location while walking.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

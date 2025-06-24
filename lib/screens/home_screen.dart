@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import './clean_screen.dart';
+import './bike_screen.dart';
+import './walk_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,23 +15,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<String> activityLog = [];
   final GlobalKey _coinTargetKey = GlobalKey();
 
-  void _completeTask(String taskName, int coins, Offset startPosition) {
-    _playCoinBurstAnimation(startPosition, coins);
-    setState(() {
-      climateCoins += coins;
-      activityLog.add('$taskName +$coins CC');
-    });
-  }
-
-  void _playCoinBurstAnimation(Offset start, int count) {
+  void _completeTask(String taskName, int coins) {
+    // Start position is center of screen for demo, or pass from button tap if you want exact tap pos
     final overlay = Overlay.of(context);
+
+    // For demo, just animate from center of screen
+    final screenSize = MediaQuery.of(context).size;
+    final startGlobal = Offset(screenSize.width / 2, screenSize.height / 2);
+
     final renderBox = _coinTargetKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
-
     final size = renderBox.size;
-    final end = renderBox.localToGlobal(Offset(size.width / 2, size.height / 2));
+    final endGlobal = renderBox.localToGlobal(Offset(size.width / 2, size.height / 2));
 
-    final entries = List.generate(count, (i) {
+    final overlayRenderBox = overlay.context.findRenderObject() as RenderBox;
+    final overlayOrigin = overlayRenderBox.localToGlobal(Offset.zero);
+
+    final start = startGlobal - overlayOrigin;
+    final end = endGlobal - overlayOrigin;
+
+    final entries = List.generate(coins, (i) {
       return OverlayEntry(
         builder: (_) => AnimatedCoin(
           start: start,
@@ -39,69 +45,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
     });
 
-    for (var e in entries) {
-      overlay.insert(e);
+    for (var entry in entries) {
+      overlay.insert(entry);
     }
-    Future.delayed(Duration(milliseconds: 800 + count * 50), () {
-      for (var e in entries) {
-        e.remove();
+    Future.delayed(Duration(milliseconds: 800 + coins * 50), () {
+      for (var entry in entries) {
+        entry.remove();
       }
+      setState(() {
+        climateCoins += coins;
+        activityLog.add('$taskName +$coins CC');
+      });
     });
   }
 
-  void _simulateTask(String task, int reward, BuildContext context) {
-    final RenderBox box = context.findRenderObject() as RenderBox;
-    final size = box.size;
-    final start = box.localToGlobal(Offset(size.width / 2, size.height / 2));
+  void _openTaskScreen(String taskName) async {
+    int earnedCoins = 0;
+    bool success = false;
 
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('$task?'),
-        content: Text('Reward: $reward ClimateCoin'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _completeTask(task, reward, start);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
+    switch (taskName) {
+      case 'Clean up an area':
+        success = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (_) => const CleanScreen()),
+            ) ??
+            false;
+        earnedCoins = 10;
+        break;
+      case 'Ride a bike':
+        success = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (_) => const BikeScreen()),
+            ) ??
+            false;
+        earnedCoins = 5;
+        break;
+      case 'Walk instead of driving':
+        success = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (_) => const WalkScreen()),
+            ) ??
+            false;
+        earnedCoins = 5;
+        break;
+    }
+
+    if (success) {
+      _completeTask(taskName, earnedCoins);
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Scaffold(
-          appBar: AppBar(
-            title: const Text('Symbiosis Dashboard'),
-            centerTitle: true,
-            backgroundColor: Colors.green[600],
-            foregroundColor: Colors.white,
-          ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: ListView(
-              children: [
-                _buildBalanceCard(),
-                const SizedBox(height: 20),
-                _buildTaskCard(),
-                const SizedBox(height: 20),
-                _buildActivityLog(),
-              ],
-            ),
-          ),
-        ),
-      ],
+  Widget _taskTile(
+      String title, String subtitle, IconData icon, int reward) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.green[700]),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text(subtitle),
+      trailing: ElevatedButton(
+        onPressed: () => _openTaskScreen(title),
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+        child: const Text('Start'),
+      ),
     );
   }
 
@@ -150,25 +154,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Icons.directions_bike, 5),
             _taskTile('Walk instead of driving',
                 'Use your feet instead of fuel', Icons.directions_walk, 5),
-            _taskTile('Recycle plastic', 'Recycle used plastic materials',
-                Icons.recycling, 3),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _taskTile(
-      String title, String subtitle, IconData icon, int reward) {
-    return Builder(
-      builder: (context) => ListTile(
-        leading: Icon(icon, color: Colors.green[700]),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle),
-        trailing: ElevatedButton(
-          onPressed: () => _simulateTask(title, reward, context),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-          child: const Text('Complete'),
         ),
       ),
     );
@@ -195,6 +181,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('Symbiosis Dashboard'),
+            centerTitle: true,
+            backgroundColor: Colors.green[600],
+            foregroundColor: Colors.white,
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: ListView(
+              children: [
+                _buildBalanceCard(),
+                const SizedBox(height: 20),
+                _buildTaskCard(),
+                const SizedBox(height: 20),
+                _buildActivityLog(),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -249,19 +263,12 @@ class _AnimatedCoinState extends State<AnimatedCoin>
 
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (_, __) {
-          return Positioned(
-            top: _position.value.dy,
-            left: _position.value.dx,
-            child: Transform.scale(
-              scale: _scale.value,
-              child: const Icon(Icons.eco, color: Colors.green, size: 32),
-            ),
-          );
-        },
+    return Positioned(
+      top: _position.value.dy,
+      left: _position.value.dx,
+      child: Transform.scale(
+        scale: _scale.value,
+        child: const Icon(Icons.eco, color: Colors.green, size: 32),
       ),
     );
   }
