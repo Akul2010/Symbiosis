@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pedometer/pedometer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class WalkScreen extends StatefulWidget {
   const WalkScreen({super.key});
@@ -17,10 +18,26 @@ class _WalkScreenState extends State<WalkScreen> {
   int _steps = 0;
   late Stream<StepCount> _stepCountStream;
 
+  int _climateCoinBalance = 0;
+  bool _taskCompleted = false;
+
   @override
   void initState() {
     super.initState();
+    _loadClimateCoins();
     _initPermissions();
+  }
+
+  Future<void> _loadClimateCoins() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _climateCoinBalance = prefs.getInt('climateCoinBalance') ?? 0;
+    });
+  }
+
+  Future<void> _saveClimateCoins() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('climateCoinBalance', _climateCoinBalance);
   }
 
   Future<void> _initPermissions() async {
@@ -44,6 +61,7 @@ class _WalkScreenState extends State<WalkScreen> {
       _tracking = true;
       _status = "Tracking walking activity...";
       _steps = 0;
+      _taskCompleted = false;
     });
 
     try {
@@ -74,7 +92,18 @@ class _WalkScreenState extends State<WalkScreen> {
     setState(() {
       _tracking = false;
       _status = "Tracking stopped. Total steps: $_steps";
+      _taskCompleted = true;
     });
+  }
+
+  void _completeTask() {
+    if (!_taskCompleted) return;
+    setState(() {
+      _climateCoinBalance += 10; // Award 10 ClimateCoins for walk
+      _taskCompleted = false; // Disable complete button after reward
+      _status = "Task completed! You earned 10 ClimateCoins.";
+    });
+    _saveClimateCoins();
   }
 
   @override
@@ -102,6 +131,11 @@ class _WalkScreenState extends State<WalkScreen> {
             ),
             const SizedBox(height: 30),
             Text(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 20),
+            Text(
+              "ClimateCoins: $_climateCoinBalance",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const Spacer(),
             SizedBox(
               width: double.infinity,
@@ -117,6 +151,22 @@ class _WalkScreenState extends State<WalkScreen> {
                 onPressed: _tracking ? _stopTracking : _startTracking,
               ),
             ),
+            const SizedBox(height: 12),
+            if (!_tracking && _taskCompleted)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.monetization_on),
+                  label: const Text("Complete Task & Claim Coins"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(fontSize: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _completeTask,
+                ),
+              ),
           ],
         ),
       ),

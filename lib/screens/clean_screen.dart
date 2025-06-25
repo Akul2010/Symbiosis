@@ -1,9 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CleanScreen extends StatefulWidget {
   const CleanScreen({super.key});
@@ -13,185 +12,131 @@ class CleanScreen extends StatefulWidget {
 }
 
 class _CleanScreenState extends State<CleanScreen> {
-  String _status = "Requesting permissions...";
-  bool _tracking = false;
-  Position? _startPosition;
-  DateTime? _startTime;
-  Position? _currentPosition;
   File? _image;
+  bool _cleanupVerified = false;
+  int _climateCoinBalance = 0;
+  bool _taskCompleted = false;
+  String _status = "Please upload a photo of your cleanup";
 
   final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _initPermissions();
+    _loadClimateCoins();
   }
 
-  Future<void> _initPermissions() async {
-    bool locationGranted = await _requestPermission(Permission.locationWhenInUse);
-    bool cameraGranted = await _requestPermission(Permission.camera);
-    if (!locationGranted || !cameraGranted) {
-      setState(() => _status = "Required permissions not granted.");
-      return;
-    }
-    setState(() => _status = "Permissions granted. Ready to start cleanup.");
-  }
-
-  Future<bool> _requestPermission(Permission permission) async {
-    if (await permission.isGranted) return true;
-    final result = await permission.request();
-    return result.isGranted;
-  }
-
-  void _startTracking() async {
+  Future<void> _loadClimateCoins() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _tracking = true;
-      _status = "Tracking cleanup activity...";
-      _startPosition = null;
-      _startTime = DateTime.now();
-      _image = null;
-    });
-
-    try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      setState(() {
-        _startPosition = position;
-        _currentPosition = position;
-        _status = "Started at (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})";
-      });
-    } catch (e) {
-      setState(() => _status = "Error getting location: $e");
-    }
-
-    Geolocator.getPositionStream(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5))
-        .listen((Position position) {
-      if (!_tracking) return;
-      setState(() {
-        _currentPosition = position;
-        _status = "Cleaning in progress at (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})";
-      });
+      _climateCoinBalance = prefs.getInt('climateCoinBalance') ?? 0;
     });
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    final pickedFile = await _picker.pickImage(source: source, maxWidth: 800, maxHeight: 800, imageQuality: 80);
+  Future<void> _saveClimateCoins() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('climateCoinBalance', _climateCoinBalance);
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.camera);
+
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
+        _status = "Photo uploaded. Waiting for verification...";
+        _cleanupVerified = false;
+        _taskCompleted = false;
+      });
+      // Simulate verification delay
+      await Future.delayed(const Duration(seconds: 3));
+      setState(() {
+        _cleanupVerified = true;
+        _status = "Cleanup verified! You can now complete the task.";
+        _taskCompleted = true;
+      });
+    } else {
+      setState(() {
+        _status = "No photo selected.";
+        _cleanupVerified = false;
       });
     }
   }
 
-  void _stopTracking() {
-    if (_startPosition == null || _startTime == null) {
-      setState(() {
-        _tracking = false;
-        _status = "Cleanup stopped, but no start data recorded.";
-      });
-      return;
-    }
-
-    final timeElapsed = DateTime.now().difference(_startTime!);
-    double distance = 0;
-
-    if (_currentPosition != null) {
-      distance = Geolocator.distanceBetween(
-        _startPosition!.latitude,
-        _startPosition!.longitude,
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-      );
-    }
-
-    // Validation: At least 10 minutes and moved at least 10 meters, and photo taken
-    bool validCleanup = timeElapsed.inMinutes >= 10 && distance >= 10 && _image != null;
-
+  void _completeTask() {
+    if (!_taskCompleted || !_cleanupVerified) return;
     setState(() {
-      _tracking = false;
-      _status = validCleanup
-          ? "Cleanup verified!\nTime: ${timeElapsed.inMinutes} min\nDistance: ${distance.toStringAsFixed(1)} m\nPhoto Uploaded"
-          : "Cleanup incomplete.\nEnsure you moved enough, spent time cleaning, and uploaded a photo.";
+      _climateCoinBalance += 20; // Award 20 ClimateCoins for cleanup
+      _taskCompleted = false;
+      _status = "Task completed! You earned 20 ClimateCoins.";
     });
-
-    _startPosition = null;
-    _startTime = null;
-    _currentPosition = null;
-    if (!validCleanup) _image = null;
+    _saveClimateCoins();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Clean Task"),
+        title: const Text("Cleanup Task"),
         backgroundColor: Colors.green[700],
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Icon(Icons.cleaning_services_outlined, size: 120, color: Colors.green[600]),
+            Icon(Icons.cleaning_services, size: 120, color: Colors.green[600]),
+            const SizedBox(height: 20),
+            _image != null
+                ? Image.file(_image!, height: 250, fit: BoxFit.cover)
+                : Container(
+                    height: 250,
+                    color: Colors.grey[200],
+                    child: const Center(
+                      child: Text("No photo uploaded", style: TextStyle(color: Colors.black45)),
+                    ),
+                  ),
             const SizedBox(height: 20),
             Text(
-              "Cleanup Task",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green[800]),
+              _status,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
             ),
-            const SizedBox(height: 12),
-            Text(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 20),
-
-            if (_image != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(_image!, height: 250, fit: BoxFit.cover),
-              ),
-
-            const SizedBox(height: 20),
-            if (_tracking)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _pickImage(ImageSource.camera),
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text("Take Photo"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[600],
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  ElevatedButton.icon(
-                    onPressed: () => _pickImage(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text("Upload Photo"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[400],
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ],
-              ),
-
+            Text(
+              "ClimateCoins: $_climateCoinBalance",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const Spacer(),
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                icon: Icon(_tracking ? Icons.stop : Icons.play_arrow),
-                label: Text(_tracking ? "Stop Cleanup" : "Start Cleanup"),
+                icon: const Icon(Icons.camera_alt),
+                label: const Text("Upload Cleanup Photo"),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _tracking ? Colors.red : Colors.green,
+                  backgroundColor: Colors.green,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   textStyle: const TextStyle(fontSize: 18),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: _tracking ? _stopTracking : _startTracking,
+                onPressed: _pickImage,
               ),
             ),
+            const SizedBox(height: 12),
+            if (_cleanupVerified && _taskCompleted)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.monetization_on),
+                  label: const Text("Complete Task & Claim Coins"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(fontSize: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _completeTask,
+                ),
+              ),
           ],
         ),
       ),
